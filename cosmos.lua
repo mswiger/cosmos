@@ -37,6 +37,15 @@ local function class(klass)
   })
 end
 
+local function generateQuery(components)
+  local queryComponents = {}
+  for _, component in ipairs(components) do
+    table.insert(queryComponents, tostring(component))
+  end
+  table.sort(queryComponents)
+  return table.concat(queryComponents, '|')
+end
+
 --
 -- EntityIndex
 --
@@ -232,8 +241,7 @@ local Cosmos = class {
   end,
 
   queryEntities = function(self, components)
-    table.sort(components)
-    local query = table.concat(components, '|')
+    local query = generateQuery(components)
 
     if self.indexes[query] == nil then
       self.indexes[query] = EntityIndex(components)
