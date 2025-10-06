@@ -22,6 +22,7 @@ SOFTWARE.
 
 local unpack = table.unpack or unpack
 
+---Simple class constructor
 local function class(klass)
   klass = klass or {}
 
@@ -37,6 +38,9 @@ local function class(klass)
   })
 end
 
+---Generate a query string from the list of components
+---@param components any[] list of components from which to generate the query string
+---@return string # the query string generated
 local function generateQuery(components)
   local queryComponents = {}
   for _, component in ipairs(components) do
@@ -46,9 +50,23 @@ local function generateQuery(components)
   return table.concat(queryComponents, '|')
 end
 
---
--- EntityIndex
---
+---Manages an index of entities and their components. This is used to cache the results of entity queries.
+---@class EntityIndex
+---
+---@field components any[] list of component types by which the entities are indexed
+---@field entities table list of components in the index
+---@field contains table<table, boolean> a hashmap to speed up checking for entities that exist in the index
+---
+---Check whether the given entity exists in the index.
+---@field hasEntity fun(self: self, entity: table): boolean
+---Check whether an entity with the given components exists in the index.
+---@field matchesEntity fun(self: self, entity: table): boolean
+---Add an entity to the index.
+---@field addEntity fun(self: self, entity: table)
+---Remove an entity from the index.
+---@field removeEntity fun(self: self, entity: table) bla
+---
+---@overload fun(components: table): EntityIndex
 local EntityIndex = class {
   init = function(self, components)
     self.components = components
@@ -100,9 +118,32 @@ local EntityIndex = class {
   end,
 }
 
---
--- Commands
---
+---Class that manages enqueuing commands to be executed on entities. This includes spawning and despawning entities as
+---well as attaching and removing components from existing entities. When the execute method is ran, the commands are
+---executed.
+---@class Commands
+---
+---@field entitiesToSpawn table[] queue that manages entities to be spawned
+---@field entitiesToDespawn table[] queue that manages entities to be despawned
+---@field componentsToAttach table[] queue that manages components to be attached
+---@field componentsToDetach table[] queue that manages components to be detached
+---
+---Enqueues an entity to be spawned when the commands are executed.
+---@field spawn fun(self: self, entity: table): table
+---
+---Enqueues an entity to be despawned when the commands are executed.
+---@field despawn fun(self: self, entity: table)
+---
+---Enqueues a list of components to be attached to the given entity when the commands are executed.
+---@field attachComponents fun(self: self, entity: table, components: table)
+---
+---Enqueues a list of components to be detached to the given entity when the commands are executed.
+---@field detatchComponents fun(self: self, entity: table, ...)
+---
+---Executes the commands that have been enqueued since the last execution. This clears each queue that it executes.
+---@field execute fun(self: self)
+---
+---@overload fun(cosmos: Cosmos): Commands
 local Commands = class {
   init = function(self, cosmos)
     self.cosmos = cosmos
@@ -163,21 +204,38 @@ local Commands = class {
   end
 }
 
---
--- Cosmos
---
+---Class that represents a "cosmos," more traditionally referred to as the "world."
+---@class Cosmos
+---
+---@field mainIndex EntityIndex index of all entities in the cosmos
+---@field indexes table<string, EntityIndex> a mapping of the query to the entity index for that query
+---@field systems table<any, table> a mapping of event type to systems triggered by that event
+---@field commands Commands commands used for modifying cosmos state
+---
+---Enqueues an entity to be spawned when the commands are executed.
+---@field spawn fun(self: self, entity: table): table
+---
+---Enqueues an entity to be despawned when the commands are executed.
+---@field despawn fun(self: self, entity: table)
+---
+---Enqueues a list of components to be attached to the given entity when the commands are executed.
+---@field attachComponents fun(self: self, entity: table, components: table)
+---
+---Enqueues a list of components to be detached to the given entity when the commands are executed.
+---@field detatchComponents fun(self: self, entity: table, ...)
+---
+---Adds the given systems to be executed when the given event is emitted.
+---@field addSystems fun(self: self, event: any, ...)
+---
+---Executes the systems that are attached to the given event, passing the given varargs to each executed system.
+---@field emit fun(self: self, event: any, ...)
+---
+---@overload fun(): Cosmos
 local Cosmos = class {
   init = function(self)
-    -- Index of all entities
     self.mainIndex = EntityIndex({})
-
-    -- A mapping of query (key) to entity index for that query (value)
     self.indexes = {}
-
-    -- Mapping of event name (key) to systems triggered by that event (value)
     self.systems = {}
-
-    -- Commands passed to systems for modifying cosmos state (i.e., entities and components)
     self.commands = Commands(self)
   end,
 
@@ -196,6 +254,30 @@ local Cosmos = class {
 
     for _, index in pairs(self.indexes) do
       if index:hasEntity(entity) then
+        index:removeEntity(entity)
+      end
+    end
+  end,
+
+  attachComponents = function(self, entity, components)
+    for name, value in pairs(components) do
+      entity[name] = value
+    end
+
+    for _, index in pairs(self.indexes) do
+      if index:matchesEntity(entity) then
+        index:addEntity(entity)
+      end
+    end
+  end,
+
+  detachComponents = function(self, entity, ...)
+    for _, component in ipairs({...}) do
+      entity[component] = nil
+    end
+
+    for _, index in pairs(self.indexes) do
+      if index:hasEntity(entity) and not index:matchesEntity(entity) then
         index:removeEntity(entity)
       end
     end
@@ -254,30 +336,6 @@ local Cosmos = class {
     end
 
     return self.indexes[query].entities
-  end,
-
-  attachComponents = function(self, entity, components)
-    for name, value in pairs(components) do
-      entity[name] = value
-    end
-
-    for _, index in pairs(self.indexes) do
-      if index:matchesEntity(entity) then
-        index:addEntity(entity)
-      end
-    end
-  end,
-
-  detachComponents = function(self, entity, ...)
-    for _, component in ipairs({...}) do
-      entity[component] = nil
-    end
-
-    for _, index in pairs(self.indexes) do
-      if index:hasEntity(entity) and not index:matchesEntity(entity) then
-        index:removeEntity(entity)
-      end
-    end
   end,
 }
 
