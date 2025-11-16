@@ -64,7 +64,7 @@ end
 ---Add an entity to the index.
 ---@field addEntity fun(self: self, entity: table)
 ---Remove an entity from the index.
----@field removeEntity fun(self: self, entity: table) bla
+---@field removeEntity fun(self: self, entity: table)
 ---
 ---@overload fun(components: table): EntityIndex
 local EntityIndex = class {
