@@ -311,6 +311,7 @@ local Cosmos = class {
       elseif system.query[1] ~= nil then
         entities = self:queryEntities(system.query)
       else
+        entities = {}
         for name, query in pairs(system.query) do
           entities[name] = self:queryEntities(query)
         end
